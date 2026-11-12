@@ -1,0 +1,88 @@
+alias: Doorbell Notification
+description: ""
+triggers:
+  - alias: When the doorbell rings
+    entity_id: binary_sensor.doorbell
+    from: 'off'
+    to: 'on'
+    trigger: state
+
+conditions: []
+
+actions:
+  - alias: Send notification to the devices
+    action: notify.<PERSON>_devices
+    data:
+      title: "Ding Dong"
+      message: "Someone is at the door"
+      data:
+        tag: door_notification
+        actions:
+          - action: open_door
+            title: "Unlock main entrance"
+            icon: sfsymbols:lock.open
+          - action: open_door_light_on
+            title: "Unlock door and turn on light"
+            icon: sfsymbols:lock.open.fill
+
+  - alias: Wait for an action or for someone to head towards the appartment door
+    wait_for_trigger:
+      - trigger: event
+        event_type: mobile_app_notification_action
+
+      - trigger: state
+        entity_id: binary_sensor.person_approaches_door
+        to: "on"
+        for: "00:00:01"
+
+    timeout: "00:00:20"
+    continue_on_timeout: true
+
+  - alias: Perform the appropriate action depending on the trigger
+    choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.event.data.action == 'open_door' }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.door_opener
+
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.event.data.action == 'open_door_light_on' }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.door_opener
+          - action: switch.turn_on
+            target:
+              entity_id: switch.hallway_light
+
+      - alias: If someone approaches the appartment door
+        conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.platform == 'state' }}"
+        sequence:
+          - alias: Unlock the main entrance door
+            action: switch.turn_on
+            target:
+              entity_id: switch.door_opener
+
+          - alias: Update the notification
+            action: notify.<PERSON>_devices
+            data:
+              title: "Door unlocked"
+              message: " "
+              data:
+                tag: door_notification
+
+    default:
+      - alias: Clear the notification after the timeout
+        action: notify.<PERSON>_devices
+        data:
+          message: clear_notification
+          data:
+            tag: door_notification
+
+mode: single

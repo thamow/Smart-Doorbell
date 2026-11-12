@@ -1,0 +1,88 @@
+alias: Klingelbenachrichtigung
+description: ""
+triggers:
+  - alias: Wenn es klingelt
+    entity_id: binary_sensor.klingel
+    from: 'off'
+    to: 'on'
+    trigger: state
+
+conditions: []
+
+actions:
+  - alias: Benachrichtigung an die Geräte senden
+    action: notify.<PERSON>_devices
+    data:
+      title: "Ding Dong"
+      message: "Da will jemand rein"
+      data:
+        tag: door_notification
+        actions:
+          - action: open_door
+            title: "Haustür öffnen"
+            icon: sfsymbols:lock.open
+          - action: open_door_light_on
+            title: "Tür öffnen und Licht einschalten"
+            icon: sfsymbols:lock.open.fill
+
+  - alias: Auf eine Aktion warten
+    wait_for_trigger:
+      - trigger: event
+        event_type: mobile_app_notification_action
+
+      - trigger: state
+        entity_id: binary_sensor.person_approaches_door
+        to: "on"
+        for: "00:00:01"
+
+    timeout: "00:00:20"
+    continue_on_timeout: true
+
+  - alias: Je nach Auslöser die passende Aktion ausführen
+    choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.event.data.action == 'open_door' }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.haustueroeffner
+
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.event.data.action == 'open_door_light_on' }}"
+        sequence:
+          - action: switch.turn_on
+            target:
+              entity_id: switch.haustueroeffner
+          - action: switch.turn_on
+            target:
+              entity_id: switch.hausflurlicht
+
+      - alias: Wenn jemand richtung Tür geht
+        conditions:
+          - condition: template
+            value_template: "{{ wait.trigger.platform == 'state' }}"
+        sequence:
+          - alias: Haustür öffnen
+            action: switch.turn_on
+            target:
+              entity_id: switch.haustueroeffner
+
+          - alias: Benachrichtigung aktualisieren
+            action: notify.<PERSON>_devices
+            data:
+              title: "Tür geöffnet"
+              message: " "
+              data:
+                tag: door_notification
+
+    default:
+      - alias: Benachrichtigung nach Ablauf der Wartezeit entfernen
+        action: notify.<PERSON>_devices
+        data:
+          message: clear_notification
+          data:
+            tag: door_notification
+
+mode: single
